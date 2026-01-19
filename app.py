@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import requests
 import os
-API_URL = "http://127.0.0.1:8000/predict"
+API_URL = "https://ia-bronchite-esante.onrender.com/predict"
 from capteurs import lire_capteurs
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -166,3 +166,4 @@ if st.button("Analyser"):
 
 st.markdown("---")
 st.info("💡 **Disclaimer**: Ce système est un outil d'aide au diagnostic.")
+
