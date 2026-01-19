@@ -1,8 +1,1 @@
-fastapi
-uvicorn
-pandas
-numpy
-scikit-learn
-pydantic
-openpyxl
-requests
+streamlit
