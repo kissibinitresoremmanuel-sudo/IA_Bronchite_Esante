@@ -1,4 +1,4 @@
-import streamlit as st
+from streamlit import st
 import pandas as pd
 import numpy as np
 import requests
@@ -147,23 +147,38 @@ if st.button("Analyser"):
         "humidite": humidite
     }
 
+    # Récupérer la clé API depuis les variables d'environnement (Render ou local)
+    API_KEY = os.environ.get("API_KEY")
+
+    # Préparer les en-têtes
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
+        headers["x-api-key"] = API_KEY
+    else:
+        st.error("Clé API manquante : définissez la variable d'environnement API_KEY sur Render ou localement.")
+        st.stop()
+
     try:
-        response = requests.post(API_URL, json=payload).json()
-
-        if response.get("prediction_effectuee") is False:
-            st.error("⚠️ Prédiction impossible")
-            st.write("Capteurs défaillants :")
-            for capteur in response["capteurs_defaillants"]:
-                st.write("❌", capteur)
-            st.info(response["action"])
-
+        response = requests.post(API_URL, json=payload, headers=headers)
+        # gérer réponse non-JSON ou erreurs HTTP
+        if response.status_code == 403:
+            st.error("⚠️ Accès interdit : Clé API invalide")
         else:
-            st.success(f"Probabilité de bronchite : {response['probabilite_bronchite']} %")
-            st.write("Niveau de risque :", response["niveau_risque"])
+            data = response.json()
+
+            if data.get("prediction_effectuee") is False:
+                st.error("⚠️ Prédiction impossible")
+                st.write("Capteurs défaillants :")
+                for capteur in data.get("capteurs_defaillants", []):
+                    st.write("❌", capteur)
+                st.info(data.get("action"))
+
+            else:
+                st.success(f"Probabilité de bronchite : {data.get('probabilite_bronchite')} %")
+                st.write("Niveau de risque :", data.get("niveau_risque"))
 
     except Exception as e:
         st.error(f"Erreur lors de l'appel API : {e}")
 
 st.markdown("---")
 st.info("💡 **Disclaimer**: Ce système est un outil d'aide au diagnostic.")
-
