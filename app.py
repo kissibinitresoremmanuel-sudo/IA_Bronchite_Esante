@@ -94,31 +94,31 @@ with col1:
 
 with col2:
     temperature_ambiante = champ_capteur_intelligent("Température ambiante (°C)", "temperature_ambiante", 10, 50, 25)
-    humidite = champ_capteur_intelligent("Humidité (%)", "humidite", 20, 100, 50)
-
+    humidite = champ_capteur_intelligent("Humidité (%)", "humidite", 20, 100, 50)  
+    # ... (garder tout le début identique jusqu'au bouton d'analyse)
 # =======================
 # ANALYSE IA
 # =======================
-st.markdown("---")
+
 if st.button("🧠 LANCER L'ANALYSE DIAGNOSTIQUE", use_container_width=True, type="primary"):
     if not api_key:
         st.error("Veuillez saisir la clé API dans la barre latérale.")
     else:
-        # On utilise bien temp_corporelle définie plus haut
+        # CONSEIL : On s'assure que les types correspondent exactement à ce que l'API attend
         payload = {
-            "age": age,
+            "age": int(age),
             "sexe": 1 if sexe == "Homme" else 0,
             "fumeur": 1 if fumeur == "Oui" else 0,
-            "annees_tabagisme": annees_tabagisme,
+            "annees_tabagisme": int(annees_tabagisme),
             "temperature_corporelle": float(temp_corporelle),
-            "toux": toux,
-            "essoufflement": essoufflement,
-            "fatigue": fatigue,
-            "douleur_thoracique": douleur_thoracique,
-            "frequence_cardiaque": frequence_cardiaque,
-            "spo2": spo2,
-            "temperature_ambiante": temperature_ambiante,
-            "humidite": humidite
+            "toux": int(toux),
+            "essoufflement": int(essoufflement),
+            "fatigue": int(fatigue),
+            "douleur_thoracique": int(douleur_thoracique),
+            "frequence_cardiaque": int(frequence_cardiaque),
+            "spo2": int(spo2),
+            "temperature_ambiante": int(temperature_ambiante), # L'API attend un int
+            "humidite": int(humidite) # L'API attend un int
         }
 
         headers = {"x-api-key": api_key}
@@ -129,27 +129,38 @@ if st.button("🧠 LANCER L'ANALYSE DIAGNOSTIQUE", use_container_width=True, typ
                 
                 if response.status_code == 200:
                     res = response.json()
-                    prob = float(res.get('probabilite_bronchite', 0))
                     
-                    st.balloons()
-                    st.subheader("📊 Résultats du Diagnostic")
-                    
-                    # Logique d'affichage par paliers de risque
-                    if prob < 30:
-                        st.success(f"### PRÉDICTION : FAIBLE ({prob}%)")
-                        st.write("✅ Risque de bronchite très limité selon les paramètres actuels.")
-                    elif 30 <= prob < 60:
-                        st.warning(f"### PRÉDICTION : MOYEN ({prob}%)")
-                        st.write("⚠️ Risque modéré. Une surveillance clinique est recommandée.")
+                    # Vérification si l'API a détecté une défaillance capteur
+                    if "prediction_effectuee" in res and res["prediction_effectuee"] is False:
+                        st.error(f"⚠️ {res.get('action')}")
+                        if "capteurs_defaillants" in res:
+                            st.write(f"Capteurs à vérifier : {', '.join(res['capteurs_defaillants'])}")
                     else:
-                        st.error(f"### PRÉDICTION : ÉLEVÉ ({prob}%)")
-                        st.write("🚨 Risque important détecté. Une consultation médicale est urgente.")
+                        prob = float(res.get('probabilite_bronchite', 0))
+                        st.balloons()
+                        st.subheader("📊 Résultats du Diagnostic")
+                        
+                        if prob < 30:
+                            st.success(f"### PRÉDICTION : FAIBLE ({prob:.1f}%)")
+                            st.write("✅ Risque de bronchite très limité.")
+                        elif 30 <= prob < 60:
+                            st.warning(f"### PRÉDICTION : MOYEN ({prob:.1f}%)")
+                            st.write("⚠️ Risque modéré. Une surveillance est recommandée.")
+                        else:
+                            st.error(f"### PRÉDICTION : ÉLEVÉ ({prob:.1f}%)")
+                            st.write("🚨 Risque important détecté.")
 
-                    st.info(f"💡 **Action recommandée :** {res.get('action', 'Consultez un médecin.')}")
+                        # Note : Ton API renvoie 'recommandation' dans le JSON
+                        st.info(f"💡 **Action recommandée :** {res.get('recommandation', 'Consultez un médecin.')}")
                 
                 elif response.status_code == 403:
                     st.error("❌ Accès refusé : Clé API incorrecte.")
                 else:
-                    st.error(f"Erreur {response.status_code} : Serveur indisponible.")
+                    st.error(f"Erreur {response.status_code} : Vérifiez l'URL de l'API ou le serveur.")
         except Exception as e:
             st.error(f"Erreur de connexion : {e}")
+
+# =======================
+# ANALYSE IA
+# =======================
+
