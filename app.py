@@ -13,10 +13,24 @@ from sklearn.metrics import accuracy_score
 
 # --- CONFIGURATION & SECURITE ---
 API_URL = "https://ia-bronchite-esante.onrender.com/predict"
-API_KEY = os.environ.get("API_KEY", "VOTRE_CLE_PAR_DEFAUT") 
 
 st.set_page_config(page_title="DIGISANTE-APP3", layout="wide")
 st.title("🏥 Système d'IA – Diagnostic Bronchite")
+
+# --- SECTION AUTHORISATION (NOUVEAU) ---
+st.sidebar.header("🔐 Sécurité")
+# On crée un champ pour saisir la clé API manuellement
+user_api_key = st.sidebar.text_input(
+    "Clé API de l'IA", 
+    value=os.environ.get("API_KEY", ""), 
+    type="password",
+    help="Entrez la clé secrète pour autoriser les requêtes vers Render."
+)
+
+if not user_api_key:
+    st.sidebar.warning("⚠️ Veuillez entrer votre clé API pour activer l'analyse.")
+else:
+    st.sidebar.success("✅ Clé API configurée.")
 
 # --- GESTION DES ETATS ---
 if 'capteurs_data' not in st.session_state:
@@ -114,47 +128,47 @@ with c4:
 # --- ANALYSE ---
 st.markdown("---")
 if st.button("🚀 LANCER L'ANALYSE IA", use_container_width=True):
-    sexe_val = 1 if sexe == "Homme" else 0
-    fumeur_val = 1 if fumeur == "Oui" else 0
+    if not user_api_key:
+        st.error("❌ Action impossible : Vous devez saisir la clé API dans la barre latérale.")
+    else:
+        sexe_val = 1 if sexe == "Homme" else 0
+        fumeur_val = 1 if fumeur == "Oui" else 0
 
-    payload = {
-        "age": int(age), "sexe": sexe_val, "fumeur": fumeur_val,
-        "annees_tabagisme": int(annees_tabagisme), "temperature_corporelle": float(temp_corporelle),
-        "toux": int(toux), "essoufflement": int(essoufflement), "fatigue": int(fatigue),
-        "douleur_thoracique": int(douleur_thoracique), "frequence_cardiaque": int(frequence_cardiaque),
-        "spo2": int(spo2), "temperature_ambiante": float(temperature_ambiante), "humidite": int(humidite)
-    }
+        payload = {
+            "age": int(age), "sexe": sexe_val, "fumeur": fumeur_val,
+            "annees_tabagisme": int(annees_tabagisme), "temperature_corporelle": float(temp_corporelle),
+            "toux": int(toux), "essoufflement": int(essoufflement), "fatigue": int(fatigue),
+            "douleur_thoracique": int(douleur_thoracique), "frequence_cardiaque": int(frequence_cardiaque),
+            "spo2": int(spo2), "temperature_ambiante": float(temperature_ambiante), "humidite": int(humidite)
+        }
 
-    headers = {"Content-Type": "application/json", "x-api-key": API_KEY}
+        # Utilisation de la clé saisie par l'utilisateur dans les headers
+        headers = {"Content-Type": "application/json", "x-api-key": user_api_key}
 
-    try:
-        with st.spinner("Analyse en cours..."):
-            response = requests.post(API_URL, json=payload, headers=headers, timeout=10)
-            if response.status_code == 200:
-                resultat = response.json()
-                prob = float(resultat.get('probabilite_bronchite'))
-                
-                st.balloons()
-                st.subheader("📊 Résultats du Diagnostic")
-                
-                # --- NOUVELLE LOGIQUE DE RISQUE (FAIBLE, MOYEN, ELEVE) ---
-                if prob < 30:
-                    st.success(f"### Risque : FAIBLE ({prob}%)")
-                    st.write("✅ Les indicateurs sont rassurants.")
-                elif 30 <= prob < 70:
-                    st.warning(f"### Risque : MOYEN ({prob}%)")
-                    st.write("⚠️ Une surveillance est nécessaire.")
+        try:
+            with st.spinner("Analyse en cours..."):
+                response = requests.post(API_URL, json=payload, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    resultat = response.json()
+                    prob = float(resultat.get('probabilite_bronchite'))
+                    
+                    st.balloons()
+                    st.subheader("📊 Résultats du Diagnostic")
+                    
+                    if prob < 30:
+                        st.success(f"### Risque : FAIBLE ({prob}%)")
+                    elif 30 <= prob < 70:
+                        st.warning(f"### Risque : MOYEN ({prob}%)")
+                    else:
+                        st.error(f"### Risque : ÉLEVÉ ({prob}%)")
+
+                    st.info(f"💡 **Conseil :** {resultat.get('action', 'Consultez un médecin.')}")
+                    
+                elif response.status_code == 403:
+                    st.error("❌ Erreur : Accès non autorisé (Clé API invalide).")
                 else:
-                    st.error(f"### Risque : ÉLEVÉ ({prob}%)")
-                    st.write("🚨 Risque important de bronchite détecté.")
-
-                st.info(f"💡 **Conseil :** {resultat.get('action', 'Consultez un médecin pour confirmer ce résultat.')}")
-                
-            elif response.status_code == 403:
-                st.error("❌ Erreur : Accès non autorisé (Clé API invalide).")
-            else:
-                st.error(f"❌ Erreur Serveur ({response.status_code})")
-    except Exception as e:
-        st.error(f"📡 Erreur de connexion : {e}")
+                    st.error(f"❌ Erreur Serveur ({response.status_code})")
+        except Exception as e:
+            st.error(f"📡 Erreur de connexion : {e}")
 
 st.sidebar.markdown(f"**Fiabilité du modèle :** {accuracy:.2%}")
