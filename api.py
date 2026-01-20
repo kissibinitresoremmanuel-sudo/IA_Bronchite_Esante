@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Header, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 import pandas as pd
@@ -10,6 +11,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score
 from capteurs import lire_capteurs
+
+# Clé API secrète (NE PAS partager)
+API_KEY_SECRET = "MA_CLE_SUPER_SECURISEE_2026"
 
 # Historique global des capteurs
 historique_capteurs = {
@@ -195,8 +199,12 @@ def test_defaillance():
     }
 
 @app.post("/predict")
-def predire_bronchite(donnees: DonneesPatient):
+def predire_bronchite(donnees: DonneesPatient, x_api_key: str = Header(None)):
     """Prédire la bronchite basé sur les données patient et capteurs"""
+    # Vérifier la clé API
+    if x_api_key != API_KEY_SECRET:
+        raise HTTPException(status_code=403, detail="Accès interdit : Clé API invalide")
+
     try:
         # Vérifier les capteurs défaillants
         capteurs_defaillants = verifier_capteurs(donnees)
