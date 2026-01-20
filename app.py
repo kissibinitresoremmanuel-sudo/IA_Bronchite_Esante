@@ -13,13 +13,12 @@ from sklearn.metrics import accuracy_score
 
 # --- CONFIGURATION & SECURITE ---
 API_URL = "https://ia-bronchite-esante.onrender.com/predict"
-# Récupération de la clé depuis l'environnement pour la sécurité
-API_KEY = os.environ.get("API_KEY", "VOTRE_CLE_PAR_DEFAUT_SI_LOCAL") 
+API_KEY = os.environ.get("API_KEY", "VOTRE_CLE_PAR_DEFAUT") 
 
-st.set_page_config(page_title="DIGISANTE-APP3 | IA Diagnostic", layout="wide")
+st.set_page_config(page_title="DIGISANTE-APP3", layout="wide")
 st.title("🏥 Système d'IA – Diagnostic Bronchite")
 
-# --- GESTION DES ETATS (SESSION STATE) ---
+# --- GESTION DES ETATS ---
 if 'capteurs_data' not in st.session_state:
     st.session_state.capteurs_data = None
 
@@ -34,33 +33,30 @@ with col_cap1:
             st.session_state.capteurs_data = data
             st.success("✅ Données reçues du matériel !")
         else:
-            st.error("❌ Échec de lecture : Vérifiez la connexion des capteurs.")
+            st.error("❌ Échec de lecture : Vérifiez la connexion.")
 
 with col_cap2:
     if st.button("🔄 Réinitialiser (Mode Manuel)", use_container_width=True):
         st.session_state.capteurs_data = None
         st.info("Passage en saisie manuelle.")
 
-# Aide visuelle pour l'utilisateur
 capteurs = st.session_state.capteurs_data
 if capteurs:
-    st.info("🚀 **Mode Automatique :** Les champs capteurs sont verrouillés par les données réelles.")
+    st.info("🚀 **Mode Automatique :** Champs capteurs verrouillés.")
 else:
-    st.warning("✍️ **Mode Manuel :** Veuillez saisir les constantes vitales manuellement.")
+    st.warning("✍️ **Mode Manuel :** Saisie manuelle activée.")
 
-# --- CHARGEMENT DU MODELE IA ---
+# --- CHARGEMENT DU MODELE ---
 @st.cache_resource
 def load_model():
     try:
         dataset_path = "bronchite_cote_ivoire_dataset_1000.xlsx"
         if not os.path.exists(dataset_path):
             return None, None, None
-
         data = pd.read_excel(dataset_path)
         X = data.drop("bronchite", axis=1)
         y = data["bronchite"]
         X = X.fillna(X.median(numeric_only=True))
-
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
         model = Pipeline([
             ("scaler", StandardScaler()),
@@ -75,9 +71,9 @@ def load_model():
 
 model, feature_names, accuracy = load_model()
 
-# --- FORMULAIRE PATIENT ---
+# --- FORMULAIRE ---
 st.markdown("---")
-st.subheader("📋 Informations Patient & Paramètres")
+st.subheader("📋 Informations Patient")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -93,15 +89,14 @@ with col2:
     fatigue = st.slider("Fatigue (0-3)", 0, 3, 0)
     douleur_thoracique = st.slider("Douleur thoracique (0-3)", 0, 3, 0)
 
-# --- LOGIQUE DE VERROUILLAGE DES CHAMPS CAPTEURS ---
-st.markdown("#### 🩺 Constantes Vitales (Capteurs)")
+# --- LOGIQUE CAPTEURS ---
+st.markdown("#### 🩺 Constantes Vitales")
 c3, c4 = st.columns(2)
 
-# Fonction pour déterminer la valeur et l'état (verrouillé ou non)
 def get_sensor_value(key, default):
     if capteurs and key in capteurs and capteurs[key] is not None:
-        return capteurs[key], True # Valeur du capteur, Verrouiller=Vrai
-    return default, False # Valeur par défaut, Verrouiller=Faux
+        return capteurs[key], True
+    return default, False
 
 val_fc, lock_fc = get_sensor_value("frequence_cardiaque", 80)
 val_spo2, lock_spo2 = get_sensor_value("spo2", 98)
@@ -116,50 +111,49 @@ with c4:
     temperature_ambiante = st.number_input("Température Ambiante (°C)", 0.0, 60.0, float(val_temp_amb), disabled=lock_temp_amb)
     humidite = st.number_input("Humidité relative (%)", 0, 100, int(val_humid), disabled=lock_humid)
 
-# --- ANALYSE ET ENVOI ---
+# --- ANALYSE ---
 st.markdown("---")
 if st.button("🚀 LANCER L'ANALYSE IA", use_container_width=True):
-    # Préparation du payload (données à envoyer)
     sexe_val = 1 if sexe == "Homme" else 0
     fumeur_val = 1 if fumeur == "Oui" else 0
 
     payload = {
-        "age": int(age),
-        "sexe": sexe_val,
-        "fumeur": fumeur_val,
-        "annees_tabagisme": int(annees_tabagisme),
-        "temperature_corporelle": float(temp_corporelle),
-        "toux": int(toux),
-        "essoufflement": int(essoufflement),
-        "fatigue": int(fatigue),
-        "douleur_thoracique": int(douleur_thoracique),
-        "frequence_cardiaque": int(frequence_cardiaque),
-        "spo2": int(spo2),
-        "temperature_ambiante": float(temperature_ambiante),
-        "humidite": int(humidite)
+        "age": int(age), "sexe": sexe_val, "fumeur": fumeur_val,
+        "annees_tabagisme": int(annees_tabagisme), "temperature_corporelle": float(temp_corporelle),
+        "toux": int(toux), "essoufflement": int(essoufflement), "fatigue": int(fatigue),
+        "douleur_thoracique": int(douleur_thoracique), "frequence_cardiaque": int(frequence_cardiaque),
+        "spo2": int(spo2), "temperature_ambiante": float(temperature_ambiante), "humidite": int(humidite)
     }
 
-    # Sécurité : En-têtes avec Clé API
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": API_KEY  # C'est ici que ton IA est sécurisée
-    }
+    headers = {"Content-Type": "application/json", "x-api-key": API_KEY}
 
     try:
-        with st.spinner("Analyse en cours par l'IA..."):
+        with st.spinner("Analyse en cours..."):
             response = requests.post(API_URL, json=payload, headers=headers, timeout=10)
-            
             if response.status_code == 200:
                 resultat = response.json()
+                prob = float(resultat.get('probabilite_bronchite'))
+                
                 st.balloons()
-                st.success(f"### Résultat : {resultat.get('niveau_risque')}")
-                st.metric("Probabilité de Bronchite", f"{resultat.get('probabilite_bronchite')}%")
-                st.info(f"Conseil : {resultat.get('action', 'Consultez un médecin pour validation.')}")
+                st.subheader("📊 Résultats du Diagnostic")
+                
+                # --- NOUVELLE LOGIQUE DE RISQUE (FAIBLE, MOYEN, ELEVE) ---
+                if prob < 30:
+                    st.success(f"### Risque : FAIBLE ({prob}%)")
+                    st.write("✅ Les indicateurs sont rassurants.")
+                elif 30 <= prob < 70:
+                    st.warning(f"### Risque : MOYEN ({prob}%)")
+                    st.write("⚠️ Une surveillance est nécessaire.")
+                else:
+                    st.error(f"### Risque : ÉLEVÉ ({prob}%)")
+                    st.write("🚨 Risque important de bronchite détecté.")
+
+                st.info(f"💡 **Conseil :** {resultat.get('action', 'Consultez un médecin pour confirmer ce résultat.')}")
+                
             elif response.status_code == 403:
-                st.error("❌ Erreur de sécurité : Clé API non autorisée.")
+                st.error("❌ Erreur : Accès non autorisé (Clé API invalide).")
             else:
                 st.error(f"❌ Erreur Serveur ({response.status_code})")
-                
     except Exception as e:
         st.error(f"📡 Erreur de connexion : {e}")
 
