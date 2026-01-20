@@ -3,7 +3,10 @@ import pandas as pd
 import numpy as np
 import requests
 import os
-import json
+
+# Remplace par ton URL Render en production
+API_URL = "https://ia-bronchite-esante.onrender.com/predict"
+
 from capteurs import lire_capteurs
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -11,167 +14,131 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score
 
-# --- CONFIGURATION & SECURITE ---
-API_URL = "https://ia-bronchite-esante.onrender.com/predict"
+# ==================================
+# FONCTION DE VERROUILLAGE DYNAMIQUE
+# ==================================
+def champ_capteur_intelligent(label, cle_capteur, min_val, max_val, default_val):
+    """
+    Verrouille le champ si la donnée existe dans le dictionnaire des capteurs.
+    """
+    donnees_capteurs = st.session_state.get("capteurs_data")
+    
+    # Vérifie si on a une valeur pour cette clé spécifique
+    if donnees_capteurs and cle_capteur in donnees_capteurs and donnees_capteurs[cle_capteur] is not None:
+        valeur_auto = float(donnees_capteurs[cle_capteur])
+        st.info(f"✅ {label} : Reçu automatiquement")
+        # Champ désactivé (disabled=True)
+        return st.number_input(label, value=valeur_auto, disabled=True)
+    else:
+        st.warning(f"✍️ {label} : Saisie manuelle requise")
+        # Champ activé pour la saisie manuelle
+        return st.number_input(label, min_value=float(min_val), max_value=float(max_val), value=float(default_val))
 
-st.set_page_config(page_title="DIGISANTE-APP3", layout="wide")
-st.title("🏥 Système d'IA – Diagnostic Bronchite")
+# =======================
+# CONFIG STREAMLIT
+# =======================
+st.set_page_config(page_title="E-Santé Bronchite", layout="wide")
+st.title("🏥 Système d'IA – Diagnostic de la Bronchite")
 
-# --- GESTION DES ETATS ---
-if 'capteurs_data' not in st.session_state:
+# Ajout de la clé API dans la sidebar pour la sécurité
+st.sidebar.header("🔐 Authentification")
+api_key = st.sidebar.text_input("Clé API", type="password")
+
+# =======================
+# SESSION CAPTEURS
+# =======================
+if "capteurs_data" not in st.session_state:
     st.session_state.capteurs_data = None
 
-# --- SECTION CAPTEURS ---
-st.subheader("📡 Interface des Capteurs (ESP32)")
+st.subheader("📡 Interface Matérielle (ESP32)")
 
-col_cap1, col_cap2 = st.columns([1, 1])
-with col_cap1:
-    if st.button("📥 Lire les données des capteurs", use_container_width=True):
-        data = lire_capteurs()
-        if data:
-            st.session_state.capteurs_data = data
-            st.success("✅ Données reçues du matériel !")
-        else:
-            st.error("❌ Échec de lecture : Vérifiez la connexion.")
+colA, colB = st.columns(2)
+with colA:
+    if st.button("📥 LIRE LES CAPTEURS", use_container_width=True):
+        with st.spinner("Lecture du matériel..."):
+            st.session_state.capteurs_data = lire_capteurs()
+            if st.session_state.capteurs_data:
+                st.success("Données synchronisées !")
+            else:
+                st.error("Erreur de connexion matériel.")
 
-with col_cap2:
-    if st.button("🔄 Réinitialiser (Mode Manuel)", use_container_width=True):
+with colB:
+    if st.button("🔄 RÉINITIALISER / SAISIE MANUELLE", use_container_width=True):
         st.session_state.capteurs_data = None
-        st.info("Passage en saisie manuelle.")
+        st.rerun()
 
-capteurs = st.session_state.capteurs_data
-if capteurs:
-    st.info("🚀 **Mode Automatique :** Champs capteurs verrouillés.")
-else:
-    st.warning("✍️ **Mode Manuel :** Saisie manuelle activée.")
-
-# --- CHARGEMENT DU MODELE ---
-@st.cache_resource
-def load_model():
-    try:
-        dataset_path = "bronchite_cote_ivoire_dataset_1000.xlsx"
-        if not os.path.exists(dataset_path):
-            return None, None, None
-        data = pd.read_excel(dataset_path)
-        X = data.drop("bronchite", axis=1)
-        y = data["bronchite"]
-        X = X.fillna(X.median(numeric_only=True))
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-        model = Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42))
-        ])
-        model.fit(X_train, y_train)
-        acc = accuracy_score(y_test, model.predict(X_test))
-        return model, X.columns.tolist(), acc
-    except Exception as e:
-        st.error(f"Erreur modèle : {e}")
-        return None, None, None
-
-model, feature_names, accuracy = load_model()
-
-# --- FORMULAIRE ---
+# =======================
+# FORMULAIRE PATIENT
+# =======================
 st.markdown("---")
-st.subheader("📋 Informations Patient")
+st.subheader("👤 Informations Patient & Cliniques")
 
-col1, col2 = st.columns(2)
-with col1:
-    age = st.number_input("Âge (ans)", 1, 120, 45)
-    sexe = st.selectbox("Sexe", ["Femme", "Homme"], index=1)
-    fumeur = st.selectbox("Fumeur", ["Non", "Oui"], index=0)
+colL, colR = st.columns(2)
+with colL:
+    age = st.number_input("Âge", 1, 100, 45)
+    sexe = st.selectbox("Sexe", ["Femme", "Homme"])
+    fumeur = st.selectbox("Fumeur", ["Non", "Oui"])
     annees_tabagisme = st.number_input("Années de tabagisme", 0, 80, 0)
-    temp_corporelle = st.number_input("Température corporelle (°C)", 30.0, 45.0, 37.0)
+    temp_corporelle = st.number_input("Température corporelle (°C)", 35.0, 42.0, 37.0)
 
-with col2:
-    toux = st.slider("Intensité toux (0-3)", 0, 3, 0)
+with colR:
+    toux = st.slider("Toux (0-3)", 0, 3, 0)
     essoufflement = st.slider("Essoufflement (0-3)", 0, 3, 0)
     fatigue = st.slider("Fatigue (0-3)", 0, 3, 0)
     douleur_thoracique = st.slider("Douleur thoracique (0-3)", 0, 3, 0)
 
-# --- LOGIQUE CAPTEURS ---
-st.markdown("#### 🩺 Constantes Vitales")
-c3, c4 = st.columns(2)
-
-def get_sensor_value(key, default):
-    if capteurs and key in capteurs and capteurs[key] is not None:
-        return capteurs[key], True
-    return default, False
-
-val_fc, lock_fc = get_sensor_value("frequence_cardiaque", 80)
-val_spo2, lock_spo2 = get_sensor_value("spo2", 98)
-val_temp_amb, lock_temp_amb = get_sensor_value("temperature_ambiante", 25.0)
-val_humid, lock_humid = get_sensor_value("humidite", 50)
-
-with c3:
-    frequence_cardiaque = st.number_input("Fréquence cardiaque (bpm)", 30, 220, int(val_fc), disabled=lock_fc)
-    spo2 = st.number_input("Saturation SpO2 (%)", 50, 100, int(val_spo2), disabled=lock_spo2)
-
-with c4:
-    temperature_ambiante = st.number_input("Température Ambiante (°C)", 0.0, 60.0, float(val_temp_amb), disabled=lock_temp_amb)
-    humidite = st.number_input("Humidité relative (%)", 0, 100, int(val_humid), disabled=lock_humid)
-
-# --- SECTION AUTHORISATION (PLACÉE AU CENTRE POUR VISIBILITÉ) ---
+# =======================================
+# SECTION PHYSIOLOGIQUE (AUTO vs MANUEL)
+# =======================================
 st.markdown("---")
-st.subheader("🔐 Authentification API")
-user_api_key = st.text_input(
-    "Entrez votre Clé API de l'IA (Render) :", 
-    value=os.environ.get("API_KEY", ""), 
-    type="password",
-    help="Cette clé permet d'autoriser la connexion sécurisée vers votre serveur Render."
-)
+st.subheader("🔌 Constantes Physiologiques")
+col1, col2 = st.columns(2)
 
-# --- ANALYSE ---
-if st.button("🚀 LANCER L'ANALYSE IA", use_container_width=True):
-    if not user_api_key:
-        st.error("❌ Action impossible : Vous devez saisir la clé API ci-dessus.")
+with col1:
+    frequence_cardiaque = champ_capteur_intelligent("Fréquence cardiaque (bpm)", "frequence_cardiaque", 40, 200, 80)
+    spo2 = champ_capteur_intelligent("Saturation SpO2 (%)", "spo2", 70, 100, 98)
+
+with col2:
+    temperature_ambiante = champ_capteur_intelligent("Température ambiante (°C)", "temperature_ambiante", 10, 50, 25)
+    humidite = champ_capteur_intelligent("Humidité (%)", "humidite", 20, 100, 50)
+
+# =======================
+# ANALYSE IA
+# =======================
+st.markdown("---")
+if st.button("🧠 LANCER L'ANALYSE DIAGNOSTIQUE", use_container_width=True, type="primary"):
+    if not api_key:
+        st.error("Veuillez saisir la clé API dans la barre latérale.")
     else:
-        sexe_val = 1 if sexe == "Homme" else 0
-        fumeur_val = 1 if fumeur == "Oui" else 0
-
         payload = {
-            "age": int(age), "sexe": sexe_val, "fumeur": fumeur_val,
-            "annees_tabagisme": int(annees_tabagisme), "temperature_corporelle": float(temp_corporelle),
-            "toux": int(toux), "essoufflement": int(essoufflement), "fatigue": int(fatigue),
-            "douleur_thoracique": int(douleur_thoracique), "frequence_cardiaque": int(frequence_cardiaque),
-            "spo2": int(spo2), "temperature_ambiante": float(temperature_ambiante), "humidite": int(humidite)
+            "age": age,
+            "sexe": 1 if sexe == "Homme" else 0,
+            "fumeur": 1 if fumeur == "Oui" else 0,
+            "annees_tabagisme": annees_tabagisme,
+            "temperature_corporelle": temperature_corporelle,
+            "toux": toux,
+            "essoufflement": essoufflement,
+            "fatigue": fatigue,
+            "douleur_thoracique": douleur_thoracique,
+            "frequence_cardiaque": frequence_cardiaque,
+            "spo2": spo2,
+            "temperature_ambiante": temperature_ambiante,
+            "humidite": humidite
         }
 
-        headers = {"Content-Type": "application/json", "x-api-key": user_api_key}
+        headers = {"x-api-key": api_key}
 
         try:
-            with st.spinner("Analyse en cours par l'IA sur Render..."):
-                response = requests.post(API_URL, json=payload, headers=headers, timeout=15)
+            with st.spinner("L'IA analyse vos données..."):
+                response = requests.post(API_URL, json=payload, headers=headers)
                 
                 if response.status_code == 200:
-                    resultat = response.json()
-                    # On récupère soit 'probabilite_bronchite' soit une valeur par défaut pour éviter les crashs
-                    prob = float(resultat.get('probabilite_bronchite', 0))
-                    
+                    res = response.json()
                     st.balloons()
-                    st.subheader("📊 Résultats du Diagnostic")
-                    
-                    if prob < 30:
-                        st.success(f"### Risque : FAIBLE ({prob}%)")
-                        st.write("✅ Les indicateurs sont rassurants.")
-                    elif 30 <= prob < 70:
-                        st.warning(f"### Risque : MOYEN ({prob}%)")
-                        st.write("⚠️ Une surveillance est nécessaire.")
-                    else:
-                        st.error(f"### Risque : ÉLEVÉ ({prob}%)")
-                        st.write("🚨 Risque important de bronchite détecté.")
-
-                    st.info(f"💡 **Conseil :** {resultat.get('action', 'Consultez un médecin.')}")
-                    
-                elif response.status_code == 403:
-                    st.error("❌ Accès Refusé : La clé API saisie est invalide pour le serveur Render.")
-                elif response.status_code == 404:
-                    st.error("❌ Erreur 404 : L'URL de l'IA est introuvable. Vérifiez l'adresse Render.")
+                    st.success(f"🩺 Résultat : {res['description']}")
+                    st.metric("Probabilité de bronchite", f"{res['probabilite_bronchite']}%")
+                    st.info(f"💡 Action recommandée : {res['action']}")
                 else:
-                    st.error(f"❌ Erreur Serveur ({response.status_code}) : {response.text}")
-                    
-        except requests.exceptions.Timeout:
-            st.error("⏲️ Le serveur Render a mis trop de temps à répondre (il était peut-être endormi). Réessayez.")
+                    st.error(f"Erreur {response.status_code} : Accès refusé ou serveur hors ligne.")
         except Exception as e:
-            st.error(f"📡 Erreur de connexion : {e}")
-
-st.sidebar.markdown(f"**Fiabilité du modèle :** {accuracy:.2%}")
+            st.error(f"Erreur de connexion : {e}")
