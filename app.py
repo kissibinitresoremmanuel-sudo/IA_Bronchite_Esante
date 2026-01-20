@@ -17,21 +17,6 @@ API_URL = "https://ia-bronchite-esante.onrender.com/predict"
 st.set_page_config(page_title="DIGISANTE-APP3", layout="wide")
 st.title("🏥 Système d'IA – Diagnostic Bronchite")
 
-# --- SECTION AUTHORISATION (NOUVEAU) ---
-st.sidebar.header("🔐 Sécurité")
-# On crée un champ pour saisir la clé API manuellement
-user_api_key = st.sidebar.text_input(
-    "Clé API de l'IA", 
-    value=os.environ.get("API_KEY", ""), 
-    type="password",
-    help="Entrez la clé secrète pour autoriser les requêtes vers Render."
-)
-
-if not user_api_key:
-    st.sidebar.warning("⚠️ Veuillez entrer votre clé API pour activer l'analyse.")
-else:
-    st.sidebar.success("✅ Clé API configurée.")
-
 # --- GESTION DES ETATS ---
 if 'capteurs_data' not in st.session_state:
     st.session_state.capteurs_data = None
@@ -125,11 +110,20 @@ with c4:
     temperature_ambiante = st.number_input("Température Ambiante (°C)", 0.0, 60.0, float(val_temp_amb), disabled=lock_temp_amb)
     humidite = st.number_input("Humidité relative (%)", 0, 100, int(val_humid), disabled=lock_humid)
 
-# --- ANALYSE ---
+# --- SECTION AUTHORISATION (PLACÉE AU CENTRE POUR VISIBILITÉ) ---
 st.markdown("---")
+st.subheader("🔐 Authentification API")
+user_api_key = st.text_input(
+    "Entrez votre Clé API de l'IA (Render) :", 
+    value=os.environ.get("API_KEY", ""), 
+    type="password",
+    help="Cette clé permet d'autoriser la connexion sécurisée vers votre serveur Render."
+)
+
+# --- ANALYSE ---
 if st.button("🚀 LANCER L'ANALYSE IA", use_container_width=True):
     if not user_api_key:
-        st.error("❌ Action impossible : Vous devez saisir la clé API dans la barre latérale.")
+        st.error("❌ Action impossible : Vous devez saisir la clé API ci-dessus.")
     else:
         sexe_val = 1 if sexe == "Homme" else 0
         fumeur_val = 1 if fumeur == "Oui" else 0
@@ -142,32 +136,41 @@ if st.button("🚀 LANCER L'ANALYSE IA", use_container_width=True):
             "spo2": int(spo2), "temperature_ambiante": float(temperature_ambiante), "humidite": int(humidite)
         }
 
-        # Utilisation de la clé saisie par l'utilisateur dans les headers
         headers = {"Content-Type": "application/json", "x-api-key": user_api_key}
 
         try:
-            with st.spinner("Analyse en cours..."):
-                response = requests.post(API_URL, json=payload, headers=headers, timeout=10)
+            with st.spinner("Analyse en cours par l'IA sur Render..."):
+                response = requests.post(API_URL, json=payload, headers=headers, timeout=15)
+                
                 if response.status_code == 200:
                     resultat = response.json()
-                    prob = float(resultat.get('probabilite_bronchite'))
+                    # On récupère soit 'probabilite_bronchite' soit une valeur par défaut pour éviter les crashs
+                    prob = float(resultat.get('probabilite_bronchite', 0))
                     
                     st.balloons()
                     st.subheader("📊 Résultats du Diagnostic")
                     
                     if prob < 30:
                         st.success(f"### Risque : FAIBLE ({prob}%)")
+                        st.write("✅ Les indicateurs sont rassurants.")
                     elif 30 <= prob < 70:
                         st.warning(f"### Risque : MOYEN ({prob}%)")
+                        st.write("⚠️ Une surveillance est nécessaire.")
                     else:
                         st.error(f"### Risque : ÉLEVÉ ({prob}%)")
+                        st.write("🚨 Risque important de bronchite détecté.")
 
                     st.info(f"💡 **Conseil :** {resultat.get('action', 'Consultez un médecin.')}")
                     
                 elif response.status_code == 403:
-                    st.error("❌ Erreur : Accès non autorisé (Clé API invalide).")
+                    st.error("❌ Accès Refusé : La clé API saisie est invalide pour le serveur Render.")
+                elif response.status_code == 404:
+                    st.error("❌ Erreur 404 : L'URL de l'IA est introuvable. Vérifiez l'adresse Render.")
                 else:
-                    st.error(f"❌ Erreur Serveur ({response.status_code})")
+                    st.error(f"❌ Erreur Serveur ({response.status_code}) : {response.text}")
+                    
+        except requests.exceptions.Timeout:
+            st.error("⏲️ Le serveur Render a mis trop de temps à répondre (il était peut-être endormi). Réessayez.")
         except Exception as e:
             st.error(f"📡 Erreur de connexion : {e}")
 
