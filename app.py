@@ -164,4 +164,3 @@ if st.button("🚀 LANCER L'ANALYSE IA", use_container_width=True):
         st.error(f"📡 Erreur de connexion : {e}")
 
 st.sidebar.markdown(f"**Fiabilité du modèle :** {accuracy:.2%}")
-st.sidebar.info("Ingénieur IA : [Ton Nom/Entreprise]")
