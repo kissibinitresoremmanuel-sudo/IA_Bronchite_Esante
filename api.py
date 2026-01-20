@@ -12,8 +12,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score
 from capteurs import lire_capteurs
 
-# Clé API secrète (NE PAS partager)
-API_KEY_SECRET = "MA_CLE_SUPER_SECURISEE_2026"
+# Clé API secrète (lue depuis la variable d'environnement)
+API_KEY_SECRET = os.environ.get("API_KEY")
+if not API_KEY_SECRET:
+    raise RuntimeError("API_KEY non définie : définissez la variable d'environnement API_KEY pour l'API.")
 
 # Historique global des capteurs
 historique_capteurs = {
