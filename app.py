@@ -3,16 +3,12 @@ import pandas as pd
 import numpy as np
 import requests
 import os
+import json
 
 # Remplace par ton URL Render en production
 API_URL = "https://ia-bronchite-esante.onrender.com/predict"
 
 from capteurs import lire_capteurs
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score
 
 # ==================================
 # FONCTION DE VERROUILLAGE DYNAMIQUE
@@ -23,15 +19,12 @@ def champ_capteur_intelligent(label, cle_capteur, min_val, max_val, default_val)
     """
     donnees_capteurs = st.session_state.get("capteurs_data")
     
-    # Vérifie si on a une valeur pour cette clé spécifique
     if donnees_capteurs and cle_capteur in donnees_capteurs and donnees_capteurs[cle_capteur] is not None:
         valeur_auto = float(donnees_capteurs[cle_capteur])
         st.info(f"✅ {label} : Reçu automatiquement")
-        # Champ désactivé (disabled=True)
         return st.number_input(label, value=valeur_auto, disabled=True)
     else:
         st.warning(f"✍️ {label} : Saisie manuelle requise")
-        # Champ activé pour la saisie manuelle
         return st.number_input(label, min_value=float(min_val), max_value=float(max_val), value=float(default_val))
 
 # =======================
@@ -40,9 +33,10 @@ def champ_capteur_intelligent(label, cle_capteur, min_val, max_val, default_val)
 st.set_page_config(page_title="E-Santé Bronchite", layout="wide")
 st.title("🏥 Système d'IA – Diagnostic de la Bronchite")
 
-# Ajout de la clé API dans la sidebar pour la sécurité
 st.sidebar.header("🔐 Authentification")
-api_key = st.sidebar.text_input("Clé API", type="password")
+# On essaie de récupérer la clé depuis l'environnement, sinon on demande la saisie
+env_api_key = os.environ.get("API_KEY", "")
+api_key = st.sidebar.text_input("Clé API", value=env_api_key, type="password")
 
 # =======================
 # SESSION CAPTEURS
@@ -110,12 +104,13 @@ if st.button("🧠 LANCER L'ANALYSE DIAGNOSTIQUE", use_container_width=True, typ
     if not api_key:
         st.error("Veuillez saisir la clé API dans la barre latérale.")
     else:
+        # On utilise bien temp_corporelle définie plus haut
         payload = {
             "age": age,
             "sexe": 1 if sexe == "Homme" else 0,
             "fumeur": 1 if fumeur == "Oui" else 0,
             "annees_tabagisme": annees_tabagisme,
-            "temperature_corporelle": temperature_corporelle,
+            "temperature_corporelle": float(temp_corporelle),
             "toux": toux,
             "essoufflement": essoufflement,
             "fatigue": fatigue,
@@ -134,11 +129,27 @@ if st.button("🧠 LANCER L'ANALYSE DIAGNOSTIQUE", use_container_width=True, typ
                 
                 if response.status_code == 200:
                     res = response.json()
+                    prob = float(res.get('probabilite_bronchite', 0))
+                    
                     st.balloons()
-                    st.success(f"🩺 Résultat : {res['description']}")
-                    st.metric("Probabilité de bronchite", f"{res['probabilite_bronchite']}%")
-                    st.info(f"💡 Action recommandée : {res['action']}")
+                    st.subheader("📊 Résultats du Diagnostic")
+                    
+                    # Logique d'affichage par paliers de risque
+                    if prob < 30:
+                        st.success(f"### PRÉDICTION : FAIBLE ({prob}%)")
+                        st.write("✅ Risque de bronchite très limité selon les paramètres actuels.")
+                    elif 30 <= prob < 60:
+                        st.warning(f"### PRÉDICTION : MOYEN ({prob}%)")
+                        st.write("⚠️ Risque modéré. Une surveillance clinique est recommandée.")
+                    else:
+                        st.error(f"### PRÉDICTION : ÉLEVÉ ({prob}%)")
+                        st.write("🚨 Risque important détecté. Une consultation médicale est urgente.")
+
+                    st.info(f"💡 **Action recommandée :** {res.get('action', 'Consultez un médecin.')}")
+                
+                elif response.status_code == 403:
+                    st.error("❌ Accès refusé : Clé API incorrecte.")
                 else:
-                    st.error(f"Erreur {response.status_code} : Accès refusé ou serveur hors ligne.")
+                    st.error(f"Erreur {response.status_code} : Serveur indisponible.")
         except Exception as e:
             st.error(f"Erreur de connexion : {e}")
